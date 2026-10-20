@@ -17,6 +17,7 @@ from amuse.units import (
     units,
     nbody_system,
     generic_unit_converter,
+    constants,
 )
 from amuse.units.trigo import sin, cos
 from amuse.datamodel.particles import Particles
@@ -129,11 +130,17 @@ def new_star_cluster(
     else:
         total_mass = single_stars.total_mass()
 
-    converter = generic_unit_converter.ConvertBetweenGenericAndSiUnits(
+    # converter takes on a constant as the first argument
+    """ converter = generic_unit_converter.ConvertBetweenGenericAndSiUnits(
         total_mass,
         1.0 | units.kms,
         effective_radius,
-    )
+    ) """
+    converter = generic_unit_converter.ConvertBetweenGenericAndSiUnits(
+            constants.G,
+            1.0 | units.MSun,
+            1.0 | units.pc,
+        )
     # Give stars a position and velocity, based on the distribution model.
     if star_distribution == "plummer":
         spatial_distribution = new_plummer_sphere(
