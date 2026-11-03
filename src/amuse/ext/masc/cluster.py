@@ -12,6 +12,7 @@ subject to change.
 
 import logging
 import numpy
+from sortedcontainers import SortedList
 
 from amuse.units import (
     units,
@@ -31,6 +32,7 @@ try:
 except ImportError:
     new_fractal_cluster_model = None
 
+numpy.random.seed(42)
 
 def new_star_cluster(
     stellar_mass=None,
@@ -38,6 +40,7 @@ def new_star_cluster(
     upper_mass_limit=125.0 | units.MSun,
     lower_mass_limit=0.1 | units.MSun,
     number_of_stars=1024,
+    sample_binaries=True, # added: sample components of binary systems from the original IMF
     number_of_binaries=0,
     effective_radius=3.0 | units.parsec,
     star_distribution="plummer",
@@ -91,6 +94,77 @@ def new_star_cluster(
         stars.velocity = [0, 0, 0] | units.kms
         return stars
 
+    # only one IMF, then decide which stars are components of a binary
+    def generate_stars_from_single_IMF(): # generate masses of all stars and decide which are binaries
+        star_masses = new_masses(
+            stellar_mass=stellar_mass,
+            initial_mass_function=initial_mass_function,
+            upper_mass_limit=upper_mass_limit,
+            lower_mass_limit=lower_mass_limit,
+            number_of_stars=number_of_stars,
+            # sort_by_mass=True  --> doesn't work for now
+        ) # masses of all stars
+
+        star_masses_values = star_masses.value_in(units.MSun)
+        n = len(star_masses_values)
+        initial_pool = sorted([(star_masses[i], i) for i in range(n)], key=lambda item: item[0])
+        #initial_pool = [(star_masses[i], i) for i in range(n - 1, -1, -1)]
+        sl = SortedList(initial_pool, key=lambda item: item[0])
+
+        #change the coefficients for clusters?
+        binary_probability = numpy.tanh(0.31*star_masses_values + 0.18) # probability that a star of given mass is a primary component of a binary (Wells&Prša2021)
+        p = numpy.random.rand(n)
+        mask = p<binary_probability # decide whether a star is a primary component of a binary
+
+        primaries_indices = numpy.where(mask)[0]
+        primaries_indices = primaries_indices[numpy.argsort(star_masses_values[primaries_indices])[::-1]]
+        qs = numpy.random.power(1.7, len(primaries_indices)) # mass ratios
+
+        used_indices = set()
+        primaries = [] | units.MSun
+        secondaries = [] | units.MSun
+
+        for idx_1, q in zip(primaries_indices, qs):
+            m1 = star_masses[idx_1]
+
+            # CHECK: If this x1 element was already consumed as an x2 earlier, skip it!
+            if (m1, idx_1) not in sl:
+                continue
+
+            sl.remove((m1, idx_1))
+
+            target = q * m1
+            pos = sl.bisect_left((target, -1))
+
+            # Collect only the two immediate neighbors around the insertion point
+            candidates = []
+            if pos < len(sl):
+                candidates.append(sl[pos])
+            if pos > 0:
+                candidates.append(sl[pos - 1])
+
+            if not candidates:
+                break
+
+            # Find the best among the two closest candidates
+            best_cand = min(candidates, key=lambda cand: (cand[0] - target) ** 2)
+            m2, idx_2 = best_cand
+
+            # Permanently remove the chosen x2 from the pool
+            sl.remove(best_cand)
+
+            used_indices.add(idx_1)
+            used_indices.add(idx_2)
+            primaries.append(m1)
+            secondaries.append(m2)
+
+        # Find all indices that were never used
+        unpaired_indices = [i for i in range(n) if i not in used_indices]
+        singles = star_masses[unpaired_indices]
+
+        return singles, primaries, secondaries
+
+
     def generate_binary_stars():
         if stellar_mass is not None:
             total_mass = initial_binary_mass_fraction * stellar_mass
@@ -115,8 +189,28 @@ def new_star_cluster(
         )
         return stars, binaries
 
-    single_stars = generate_single_stars()
-    binary_component_stars, binary_pairs = generate_binary_stars()
+    if sample_binaries:
+
+        singles_masses, primary_masses, secondary_masses = generate_stars_from_single_IMF()
+        
+        single_stars = Particles(mass=singles_masses) # create single stars
+        single_stars.position = [0, 0, 0] | units.pc
+        single_stars.velocity = [0, 0, 0] | units.kms
+
+        binary_component_stars, binary_pairs = new_binary_distribution( # create binary stars
+                primary_masses=primary_masses,
+                secondary_masses=secondary_masses, # added
+                initial_mass_function=initial_mass_function,
+                upper_mass_limit=upper_mass_limit,
+                lower_mass_limit=lower_mass_limit,
+                semi_major_axis_distribution=binary_semi_major_axis_distribution,
+                eccentricity_distribution=eccentricity_distribution,
+            )
+
+    else:
+        single_stars = generate_single_stars()
+        binary_component_stars, binary_pairs = generate_binary_stars()
+    
     all_stars = single_stars | binary_component_stars
     all_systems = single_stars | binary_pairs
 

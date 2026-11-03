@@ -13,7 +13,6 @@ from amuse.io import write_set_to_file
 from amuse.units import units, constants
 from .stars import new_masses
 
-
 def circular_velocity(
     primary,
     secondary,
@@ -93,6 +92,7 @@ def new_binary_distribution(
         else:
             # A flat distribution seems to be OK.
             mass_ratio = uniform(0, 1, size=number_of_primaries)
+
             # This gives us the secondaries' masses
             # secondaries are min_mass at least
             secondary_masses = (
