@@ -138,8 +138,8 @@ def new_star_cluster(
     ) """
     converter = generic_unit_converter.ConvertBetweenGenericAndSiUnits(
             constants.G,
-            1.0 | units.MSun,
-            1.0 | units.pc,
+            total_mass,
+            effective_radius,
         )
     # Give stars a position and velocity, based on the distribution model.
     if star_distribution == "plummer":
