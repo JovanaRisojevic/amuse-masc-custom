@@ -95,7 +95,7 @@ def new_star_cluster(
         return stars
 
     # only one IMF, then decide which stars are components of a binary
-    def generate_stars_from_single_IMF(): # generate masses of all stars and decide which are binaries
+    def generate_stars_from_single_IMF():
         star_masses = new_masses(
             stellar_mass=stellar_mass,
             initial_mass_function=initial_mass_function,
@@ -108,8 +108,7 @@ def new_star_cluster(
         star_masses_values = star_masses.value_in(units.MSun)
         n = len(star_masses_values)
         initial_pool = sorted([(star_masses[i], i) for i in range(n)], key=lambda item: item[0])
-        #initial_pool = [(star_masses[i], i) for i in range(n - 1, -1, -1)]
-        sl = SortedList(initial_pool, key=lambda item: item[0])
+        sl = SortedList(initial_pool, key=lambda item: item[0]) # use sortedcontainers module
 
         #change the coefficients for clusters?
         binary_probability = numpy.tanh(0.31*star_masses_values + 0.18) # probability that a star of given mass is a primary component of a binary (Wells&Prša2021)
@@ -124,19 +123,19 @@ def new_star_cluster(
         primaries = [] | units.MSun
         secondaries = [] | units.MSun
 
-        for idx_1, q in zip(primaries_indices, qs):
+        for idx_1, q in zip(primaries_indices, qs): # pair the components of binary stars, starting with the most massive primary star
             m1 = star_masses[idx_1]
 
-            # CHECK: If this x1 element was already consumed as an x2 earlier, skip it!
+            # pair only if this star has not already been labeled as secondary
             if (m1, idx_1) not in sl:
                 continue
 
-            sl.remove((m1, idx_1))
+            sl.remove((m1, idx_1)) # remove the star from the pool
 
-            target = q * m1
+            target = q * m1 # target mass for the secondary component, based on the mass ratio
             pos = sl.bisect_left((target, -1))
 
-            # Collect only the two immediate neighbors around the insertion point
+            # find candidates with masses closest to the target
             candidates = []
             if pos < len(sl):
                 candidates.append(sl[pos])
@@ -150,7 +149,7 @@ def new_star_cluster(
             best_cand = min(candidates, key=lambda cand: (cand[0] - target) ** 2)
             m2, idx_2 = best_cand
 
-            # Permanently remove the chosen x2 from the pool
+            # remove the selected secondary component from the pool
             sl.remove(best_cand)
 
             used_indices.add(idx_1)
@@ -158,7 +157,7 @@ def new_star_cluster(
             primaries.append(m1)
             secondaries.append(m2)
 
-        # Find all indices that were never used
+        # Find all indices that were never used, these are single stars
         unpaired_indices = [i for i in range(n) if i not in used_indices]
         singles = star_masses[unpaired_indices]
 
@@ -189,7 +188,7 @@ def new_star_cluster(
         )
         return stars, binaries
 
-    if sample_binaries:
+    if sample_binaries: # create single and binary stars from the same IMF
 
         singles_masses, primary_masses, secondary_masses = generate_stars_from_single_IMF()
         
